@@ -4,7 +4,7 @@
 
 use clap::Parser;
 use pollster::block_on;
-use slug::{FontLoader, fonts_in_collection, pick_ttc_face_index, GlyphCache, GlyphInfo, SlugRenderer, create_text_vertices, layout_text};
+use slug::{FontLoader, is_font_collection, fonts_in_collection, pick_ttc_face_index, GlyphCache, GlyphInfo, SlugRenderer, create_text_vertices, layout_text};
 use glam::{Mat4, Vec4};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -30,24 +30,30 @@ async fn run(debug: bool) {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir.join("..");
 
-    // Load Silver font (may be TTC/OTC: probe for correct face to avoid LSB-as-advance)
+    // Load Silver font (may be TTC/OTC: use magic check, then probe for correct face)
     let silver_path = workspace_root.join("Silver.ttf");
     let silver_bytes = std::fs::read(&silver_path).expect("Failed to read Silver.ttf");
-    let silver_face_index = match fonts_in_collection(&silver_bytes) {
-        Some(n) if n > 1 => pick_ttc_face_index(&silver_bytes, n),
-        _ => 0,
+    let silver_face_index = if is_font_collection(&silver_bytes) {
+        match fonts_in_collection(&silver_bytes) {
+            Some(n) if n > 1 => pick_ttc_face_index(&silver_bytes, n),
+            _ => 0,
+        }
+    } else {
+        0
     };
     let silver_loader = FontLoader::from_bytes_with_index(silver_bytes, silver_face_index)
         .expect("Failed to parse Silver.ttf");
 
-    // Load Noto CJK font (may be TTC/OTC: use correct face index for SC)
+    // Load Noto CJK font (may be TTC/OTC: use magic check, then correct face index for SC)
     let noto_path = workspace_root.join("NotoSansCJKsc-Regular.ttf");
     let noto_bytes = std::fs::read(&noto_path).expect("Failed to read NotoSansCJKsc-Regular.ttf");
-    let noto_face_index = match fonts_in_collection(&noto_bytes) {
-        Some(n) if n > 1 => {
-            pick_ttc_face_index(&noto_bytes, n)
+    let noto_face_index = if is_font_collection(&noto_bytes) {
+        match fonts_in_collection(&noto_bytes) {
+            Some(n) if n > 1 => pick_ttc_face_index(&noto_bytes, n),
+            _ => 0,
         }
-        _ => 0,
+    } else {
+        0
     };
     let noto_loader = FontLoader::from_bytes_with_index(noto_bytes, noto_face_index)
         .expect("Failed to parse NotoSansCJKsc-Regular.ttf");

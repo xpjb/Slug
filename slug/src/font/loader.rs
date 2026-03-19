@@ -1,5 +1,6 @@
-//! Font loading and outline extraction using ttf-parser's OutlineBuilder.
+//! Font loading and outline extraction using rustybuzz (ttf-parser) and OutlineBuilder.
 
+use rustybuzz::Face as RustyFace;
 use ttf_parser::{Face, OutlineBuilder};
 use crate::font::curves::{QuadraticCurve, GlyphOutlines};
 
@@ -31,11 +32,12 @@ pub fn pick_ttc_face_index(bytes: &[u8], num_faces: u32) -> u32 {
 }
 
 /// Loads TTF fonts and extracts glyph outlines as quadratic Bézier curves.
+/// Holds rustybuzz::Face for shaping; outline extraction uses the underlying ttf_parser Face (deref).
 /// The font bytes are leaked to allow the Face to live for 'static.
 pub struct FontLoader {
     #[allow(dead_code)]
     data: &'static [u8],
-    face: Face<'static>,
+    face: RustyFace<'static>,
     units_per_em: u16,
 }
 
@@ -51,13 +53,19 @@ impl FontLoader {
     /// Simplified Chinese (SC) is often at index 2 (JP=0, KR=1, SC=2, TC=3).
     pub fn from_bytes_with_index(bytes: Vec<u8>, face_index: u32) -> Result<Self, String> {
         let leaked = Box::leak(bytes.into_boxed_slice());
-        let face = Face::parse(leaked, face_index).map_err(|_| "Failed to parse TTF")?;
-        let units_per_em = face.units_per_em();
+        let face = RustyFace::from_slice(leaked, face_index)
+            .ok_or_else(|| "Failed to parse font")?;
+        let units_per_em = face.units_per_em() as u16;
         Ok(Self {
             data: leaked,
             face,
             units_per_em,
         })
+    }
+
+    /// Reference to the rustybuzz Face for text shaping.
+    pub fn face(&self) -> &RustyFace<'static> {
+        &self.face
     }
 
     /// Extract outlines for a glyph. Returns curves in em-space (0..1).

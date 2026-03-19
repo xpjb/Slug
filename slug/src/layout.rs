@@ -1,9 +1,12 @@
-//! Text layout: lay out a string of glyphs using a font loader and glyph cache.
+//! Text layout: shape text using rustybuzz and lay out glyphs.
 
+use rustybuzz::{UnicodeBuffer, shape};
+use ttf_parser::GlyphId;
 use crate::font::{FontLoader, process_bands};
 use crate::glyph_cache::{GlyphCache, GlyphInfo};
 
-/// Lay out text using the given font and cache. Returns (GlyphInfo, x, y) items in em-space.
+/// Lay out text using the given font and cache. Uses rustybuzz for shaping.
+/// Returns (GlyphInfo, x, y) items in em-space (glyph origin positions).
 pub fn layout_text(
     loader: &FontLoader,
     cache: &mut GlyphCache,
@@ -12,34 +15,40 @@ pub fn layout_text(
     start_y: f32,
 ) -> Vec<(GlyphInfo, f32, f32)> {
     let upem = loader.units_per_em() as f32;
-    let mut items = Vec::new();
+
+    let mut buffer = UnicodeBuffer::new();
+    buffer.push_str(text);
+    buffer.guess_segment_properties();
+
+    let glyph_buffer = shape(loader.face(), &[], buffer);
+
+    let infos = glyph_buffer.glyph_infos();
+    let positions = glyph_buffer.glyph_positions();
+
+    let mut items = Vec::with_capacity(infos.len());
     let mut x = start_x;
+    let mut y = start_y;
 
-    for c in text.chars() {
-        let glyph_id = match loader.glyph_index(c) {
-            Some(id) => id,
-            None => continue,
-        };
+    for (info, pos) in infos.iter().zip(positions.iter()) {
+        let glyph_id = info.glyph_id;
+        let gx = x + pos.x_offset as f32 / upem;
+        let gy = y + pos.y_offset as f32 / upem;
 
-        // Use hmtx advance directly; no bbox fallback (bbox ignores side bearings and breaks spacing).
-        // LSB-as-advance (~0.036 em) and TTC wrong-face issues are fixed at load time via pick_ttc_face_index.
-        let advance = loader
-            .advance_width(glyph_id)
-            .map(|v| v as f32 / upem)
-            .unwrap_or(0.5);
-
-        let outlines = match loader.load_glyph(glyph_id) {
+        let outlines = match loader.load_glyph(GlyphId(glyph_id as u16)) {
             Some(o) => o,
             None => {
-                x += advance;
+                x += pos.x_advance as f32 / upem;
+                y += pos.y_advance as f32 / upem;
                 continue;
             }
         };
 
         let band_data = process_bands(&outlines);
-        let info = cache.add_glyph(glyph_id.0.into(), band_data);
-        items.push((info, x, start_y));
-        x += advance;
+        let glyph_info = cache.add_glyph(glyph_id, band_data);
+        items.push((glyph_info, gx, gy));
+
+        x += pos.x_advance as f32 / upem;
+        y += pos.y_advance as f32 / upem;
     }
 
     items
