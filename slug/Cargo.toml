@@ -1,0 +1,16 @@
+[package]
+name = "slug"
+version = "0.1.0"
+edition = "2021"
+authors = ["Eric Lengyel (reference algorithm)"]
+license = "MIT"
+description = "Slug font rendering algorithm - GPU-centered text from Bézier curves"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+wgpu = "0.20"
+ttf-parser = "0.24"
+bytemuck = { version = "1.16", features = ["derive"] }
+glam = "0.29"

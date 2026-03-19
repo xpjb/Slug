@@ -1,7 +1,8 @@
-//! Slug font rendering demo - renders "Hello" using Silver.ttf and NotoSansCJKsc-Regular.ttf.
+//! Slug font rendering demo - renders "Hello 你好 日本語" using Silver.ttf and NotoSansCJKsc-Regular.ttf.
 //!
-//! Set SLUG_DEBUG=1 to print debug info and exit without rendering.
+//! Use `--debug` to print debug info and exit without rendering.
 
+use clap::Parser;
 use pollster::block_on;
 use slug::{FontLoader, fonts_in_collection, pick_ttc_face_index, GlyphCache, GlyphInfo, SlugRenderer, create_text_vertices, layout_text};
 use glam::{Mat4, Vec4};
@@ -11,16 +12,26 @@ use std::rc::Rc;
 const FONT_SIZE: f32 = 200.0;
 const LINE_SPACING_EM: f32 = 1.2;
 
-fn main() {
-    block_on(run());
+#[derive(Parser)]
+#[command(about)]
+struct Args {
+    /// Print debug info and exit without rendering
+    #[arg(long)]
+    debug: bool,
 }
 
-async fn run() {
+fn main() {
+    let args = Args::parse();
+    block_on(run(args.debug));
+}
+
+async fn run(debug: bool) {
+    // Fonts at workspace root (parent of slug-demo)
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.join("..");
 
     // Load Silver font (may be TTC/OTC: probe for correct face to avoid LSB-as-advance)
-    let mut silver_path = manifest_dir.clone();
-    silver_path.push("Silver.ttf");
+    let silver_path = workspace_root.join("Silver.ttf");
     let silver_bytes = std::fs::read(&silver_path).expect("Failed to read Silver.ttf");
     let silver_face_index = match fonts_in_collection(&silver_bytes) {
         Some(n) if n > 1 => pick_ttc_face_index(&silver_bytes, n),
@@ -30,12 +41,10 @@ async fn run() {
         .expect("Failed to parse Silver.ttf");
 
     // Load Noto CJK font (may be TTC/OTC: use correct face index for SC)
-    let mut noto_path = manifest_dir;
-    noto_path.push("NotoSansCJKsc-Regular.ttf");
+    let noto_path = workspace_root.join("NotoSansCJKsc-Regular.ttf");
     let noto_bytes = std::fs::read(&noto_path).expect("Failed to read NotoSansCJKsc-Regular.ttf");
     let noto_face_index = match fonts_in_collection(&noto_bytes) {
         Some(n) if n > 1 => {
-            // TTC/OTC: probe each face to find one with correct hmtx (avoids LSB-as-advance bug)
             pick_ttc_face_index(&noto_bytes, n)
         }
         _ => 0,
@@ -59,8 +68,8 @@ async fn run() {
     let silver_items_ref: Vec<_> = silver_items.iter().map(|(info, x, y)| (info, *x, *y)).collect();
     let noto_items_ref: Vec<_> = noto_items.iter().map(|(info, x, y)| (info, *x, *y)).collect();
 
-    // Debug mode: print diagnostics and exit (set SLUG_DEBUG=1)
-    if std::env::var("SLUG_DEBUG").as_deref() == Ok("1") {
+    // Debug mode: print diagnostics and exit
+    if debug {
         let silver_upem = silver_loader.units_per_em() as f32;
         println!("=== SILVER FONT ===");
         debug_print(&silver_cache, &silver_items_ref, color, silver_upem);

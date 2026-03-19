@@ -1,0 +1,15 @@
+[package]
+name = "wgpu-font-renderer-demo"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "wgpu-font-renderer-demo"
+path = "src/main.rs"
+
+[dependencies]
+wgpu-font-renderer = "0.1"
+wgpu = "0.20"
+winit = "0.29"
+pollster = "0.3"
+glam = "0.29"

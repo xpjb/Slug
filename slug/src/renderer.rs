@@ -20,7 +20,9 @@ pub struct SlugRenderer {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group: wgpu::BindGroup,
+    #[allow(dead_code)] // Kept alive for texture_bind_group views
     curve_texture: wgpu::Texture,
+    #[allow(dead_code)] // Kept alive for texture_bind_group views
     band_texture: wgpu::Texture,
     vertex_count: u32,
 }
@@ -44,7 +46,7 @@ impl SlugRenderer {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let mut params = SlugParams {
+        let params = SlugParams {
             slug_matrix: Mat4::IDENTITY.to_cols_array_2d(),
             slug_viewport: [config.width as f32, config.height as f32, 0.0, 0.0],
         };
@@ -221,7 +223,6 @@ impl SlugRenderer {
         let (cw, ch) = cache.curve_size();
         let (bw, bh) = cache.band_size();
 
-        // Pad curve data to full 4096-wide rows (glyph cache stores flat list)
         let curve_data = cache.curve_data();
         let curve_texels_per_row = cw as usize;
         let mut curve_padded = vec![[0.0f32; 4]; curve_texels_per_row * ch as usize];
@@ -247,7 +248,6 @@ impl SlugRenderer {
             view_formats: &[],
         });
 
-        // Pad band data to full 4096-wide rows
         let band_data = cache.band_data();
         let band_texels_per_row = bw as usize;
         let mut band_padded = vec![[0u32; 4]; band_texels_per_row * bh as usize];

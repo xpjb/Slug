@@ -1,18 +1,11 @@
 //! Band division and curve sorting for efficient pixel shader early-out.
 //! Paper: divide glyph into horizontal and vertical bands; sort curves by max coord.
 
-use crate::font::curves::{QuadraticCurve, GlyphOutlines};
+use crate::font::curves::GlyphOutlines;
 use std::cmp::Ordering;
 
 const BAND_TEXTURE_WIDTH: u32 = 4096;
-const LOG_BAND_TEXTURE_WIDTH: u32 = 12;
 const MAX_BANDS: usize = 16;
-
-/// Curve index in the curve texture plus its max x or max y for sorting.
-struct CurveInBand {
-    curve_idx: usize,
-    max_coord: f32,
-}
 
 /// Result of band processing: curve texture data and band texture data.
 pub struct BandData {
@@ -117,24 +110,10 @@ pub fn process_bands(outlines: &GlyphOutlines) -> BandData {
         row_offset += BAND_TEXTURE_WIDTH as usize;
     }
 
-    // Build band texture
-    // Layout: for each horizontal band, 1 header (count, offset). Then curve loc list.
-    // Then for each vertical band, 1 header. Then curve loc list.
-    // Band data stored at (glyphLoc.x + bandIndex.y, glyphLoc.y) for horizontal
-    // (glyphLoc.x + bandMax.y + 1 + bandIndex.x, glyphLoc.y) for vertical
-    // Curve locations are (x,y) into curve texture. Each curve uses 2 texels, so
-    // curve at index i starts at column (i*2) in row 0 of this glyph's curve data.
-
-    let curve_start_x = 0u32; // This glyph's curves start at column 0
-    let curve_start_y = 0u32; // and row 0 in its own curve sub-texture
-
-    // We'll pack: H band headers at cols 0..num_bands, V band headers at num_bands..2*num_bands
-    // Curve lists follow. Need to compute offsets.
-    let mut band_texels: Vec<[u32; 4]> = Vec::new();
-
     let mut h_band_headers: Vec<(u32, u32)> = Vec::new();
     let mut curve_locations: Vec<(u32, u32)> = Vec::new();
     let mut offset = 0u32;
+    let curve_start_y = 0u32;
 
     for band in &h_bands {
         let count = band.len() as u32;
@@ -146,7 +125,6 @@ pub fn process_bands(outlines: &GlyphOutlines) -> BandData {
         }
     }
 
-    let v_offset = offset;
     let mut v_band_headers: Vec<(u32, u32)> = Vec::new();
     for band in &v_bands {
         let count = band.len() as u32;
@@ -158,37 +136,6 @@ pub fn process_bands(outlines: &GlyphOutlines) -> BandData {
         }
     }
 
-    // Band texture layout per glyph (simplified):
-    // Rows: one row per glyph. Cols: headers then curve locs.
-    // Reference: bandData.Load(glyphLoc.x + bandIndex.y, glyphLoc.y) for H
-    // glyphLoc is (band_start_x, band_start_y). So we need columns for:
-    // col 0..num_bands: H band headers (count, offset)
-    // col num_bands..num_bands+num_bands: V band headers
-    // Then curve locations. CalcBandLoc wraps when x exceeds 4096.
-
-    // Simpler: store glyph band data in a contiguous block. Width 4096.
-    // Header row: [H0_count, H0_offset, H1_count, H1_offset, ... | V0_count, V0_offset, ...]
-    // Data rows: curve (x,y) pairs. Each texel holds (x,y) as rg32ui.
-    // Actually the reference uses uint4 - (count, offset) in .xy and possibly more.
-    // For H band: hbandData.x = count, hbandData.y = offset.
-    // CalcBandLoc: bandLoc = (glyphLoc.x + offset) with wrap. So offset is into the glyph's band block.
-    // The curve locations are stored sequentially; offset points to start of that band's list.
-
-    // We need one texel per band for headers. Count and offset.
-    // Then texels for curve locations. Each curve loc is (x,y) - 2 u32s.
-    // texture is Rgba32Uint. So one texel = (curve_x, curve_y, _, _).
-    // Headers: one texel = (count, offset, _, _).
-
-    let total_band_cols = num_bands * 2 + curve_locations.len(); // headers + locs
-    // Pack into 4096-wide texture. Each glyph gets a row? Or region?
-    // Paper: "the data for a glyph begins with a table of band headers for all of the horizontal bands
-    // followed by all of the vertical bands. The header fits into one texel..."
-    // So glyph band block: [H0][H1]...[Hn][V0][V1]...[Vn][curve_loc0][curve_loc1]...
-    // Column 0: H0 (count, offset), col 1: H1, ... col num_bands-1: H last
-    // col num_bands: V0, ... col 2*num_bands-1: V last
-    // col 2*num_bands: first curve loc, etc.
-
-    // bandMax is max valid index; num_bands bands means indices 0..num_bands-1
     let band_max_x = (num_bands as u32).saturating_sub(1);
     let band_max_y = (num_bands as u32).saturating_sub(1);
 
@@ -219,9 +166,8 @@ fn build_band_texture(
 ) -> Vec<[u32; 4]> {
     let mut texels = Vec::new();
     let mut curve_offset = 0u32;
-    let header_texels = (num_bands * 2) as u32; // H headers + V headers before curve list
+    let header_texels = (num_bands * 2) as u32;
 
-    // Headers for H bands: offset = texel index from start of glyph block
     for (count, _) in h_headers {
         let off = header_texels + curve_offset;
         curve_offset += *count;
@@ -231,7 +177,6 @@ fn build_band_texture(
         texels.push([0, header_texels + curve_offset, 0, 0]);
     }
 
-    // Headers for V bands (curve_offset continues from after H curve list)
     for (count, _) in v_headers {
         let off = header_texels + curve_offset;
         curve_offset += *count;
@@ -241,7 +186,6 @@ fn build_band_texture(
         texels.push([0, header_texels + curve_offset, 0, 0]);
     }
 
-    // Curve locations
     for (x, y) in curve_locs {
         texels.push([*x, *y, 0, 0]);
     }

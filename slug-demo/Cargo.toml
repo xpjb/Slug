@@ -1,0 +1,16 @@
+[package]
+name = "slug-demo"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "slug-demo"
+path = "src/main.rs"
+
+[dependencies]
+slug = { path = "../slug" }
+clap = { version = "4", features = ["derive"] }
+wgpu = "0.20"
+winit = "0.29"
+pollster = "0.3"
+glam = "0.29"

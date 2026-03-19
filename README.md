@@ -1,12 +1,31 @@
-# Slug
-This repository contains reference shader implementations for the Slug font rendering algorithm. The code itself contains many comments providing details about the inputs and the calculations performed.
+Fork of Eric Lengyel's Slug reference repository.
 
-For information about how the core algorithm works, see the 2017 paper in the Journal of Computer Graphics Techniques:
 
-https://jcgt.org/published/0006/02/02/
+I got excited and vibe coded a wgpu integration.
 
-Updated information about changes that have occurred over the years can be found in the following blog post:
 
-https://terathon.com/blog/decade-slug.html
+I'm told this is basically the same as wgpu-font-renderer (sort of)
 
-The code in this repository may be freely used by anyone for any purpose. The patent has been dedicated to the public domain. If you do use this code in software that gets distributed in any way, then you are required to give credit.
+I'm also told that we are doing a bunch of shit that should be automatically handled by rustybuzz, everything except checking magic numbers ofr mislabelled ttc files.
+
+Anyway there is also vello which sounds pretty good
+
+## What are we trying to actually build here: a few options
+### Owned Rust text renderer for games
+* With precise control over size and positioning
+* Stuff like colour handling, effects, outlines
+* Maybe some cheeky like cursed effects, text is moving, etc
+
+Multiple approaches eg traditional pixel raster webgpu could use render passes, shaders, jump flooding for outlines, warping, pretty good control. Pixel perfect spacing, outlines and control.
+
+Slug could be pretty dam clean and has a lot of control
+
+Vello probably heavier but can do full canvas stuff
+
+Muh image inclusion etc - Vello can do SVGs as well and stuff. Like im used to on web emoji prototypes and etc (like skia / chrome)
+
+
+### Canvas Renderer thing ??
+Pretty hectic but its just a vague option with vello, can draw boxes and stuff, again web tech is nice. Servo renderer include in the game lol? Its like i wonder if Dioxus native uses that. Anyway these get a bit crazy
+
+Its like how good the game ui in HTML is working in web
