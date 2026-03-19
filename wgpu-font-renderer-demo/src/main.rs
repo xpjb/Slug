@@ -1,4 +1,4 @@
-//! wgpu-font-renderer demo - renders "Hello 你好 日本語" using Silver.ttf and NotoSansCJKsc-Regular.ttf.
+//! wgpu-font-renderer demo - renders "Hello 你好 日本語" using Silver.ttf and NotoSansSC-Regular.ttf.
 //! Same layout as slug-demo: two lines, Silver at (50,150), Noto at (50,390), font size 200.
 
 use pollster::block_on;
@@ -19,7 +19,7 @@ async fn run() {
     let workspace_root = manifest_dir.join("..");
 
     let silver_path = workspace_root.join("Silver.ttf");
-    let noto_path = workspace_root.join("NotoSansCJKsc-Regular.ttf");
+    let noto_path = workspace_root.join("NotoSansSC-Regular.ttf");
 
     let (window, event_loop, size) = {
         let event_loop = winit::event_loop::EventLoop::new().unwrap();
@@ -79,7 +79,7 @@ async fn run() {
             noto_path.to_str().expect("Noto path"),
             preset,
         )
-        .expect("Failed to load NotoSansCJKsc-Regular.ttf");
+        .expect("Failed to load NotoSansSC-Regular.ttf");
 
     let silver_y = 150.0;
     let noto_y = silver_y + FONT_SIZE * LINE_SPACING_EM;

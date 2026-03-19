@@ -1,10 +1,10 @@
-//! Slug font rendering demo - renders "Hello 你好 日本語" using Silver.ttf and NotoSansCJKsc-Regular.ttf.
+//! Slug font rendering demo - renders "Hello 你好 日本語" using Silver.ttf and NotoSansSC-Regular.ttf.
 //!
 //! Use `--debug` to print debug info and exit without rendering.
 
 use clap::Parser;
 use pollster::block_on;
-use slug::{FontLoader, is_font_collection, fonts_in_collection, pick_ttc_face_index, GlyphCache, GlyphInfo, SlugRenderer, create_text_vertices, layout_text};
+use slug::{FontLoader, is_font_collection, font_format, fonts_in_collection, pick_ttc_face_index, pick_ttc_face_index_with_options, debug_print_advances, GlyphCache, GlyphInfo, SlugRenderer, create_text_vertices, layout_text};
 use glam::{Mat4, Vec4};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -44,19 +44,20 @@ async fn run(debug: bool) {
     let silver_loader = FontLoader::from_bytes_with_index(silver_bytes, silver_face_index)
         .expect("Failed to parse Silver.ttf");
 
-    // Load Noto CJK font (may be TTC/OTC: use magic check, then correct face index for SC)
-    let noto_path = workspace_root.join("NotoSansCJKsc-Regular.ttf");
-    let noto_bytes = std::fs::read(&noto_path).expect("Failed to read NotoSansCJKsc-Regular.ttf");
-    let noto_face_index = if is_font_collection(&noto_bytes) {
-        match fonts_in_collection(&noto_bytes) {
-            Some(n) if n > 1 => pick_ttc_face_index(&noto_bytes, n),
-            _ => 0,
-        }
+    // Load Noto SC font (Simplified Chinese)
+    let noto_path = workspace_root.join("NotoSansSC-Regular.ttf");
+    let noto_bytes = std::fs::read(&noto_path).expect("Failed to read NotoSansSC-Regular.ttf");
+    let noto_format = font_format(&noto_bytes);
+    let noto_prefer_sc = noto_path.to_string_lossy().contains("SC");
+    let noto_is_collection = is_font_collection(&noto_bytes);
+    let noto_num_faces = fonts_in_collection(&noto_bytes).unwrap_or(1);
+    let noto_face_index = if noto_is_collection && noto_num_faces > 1 {
+        pick_ttc_face_index_with_options(&noto_bytes, noto_num_faces, noto_prefer_sc)
     } else {
         0
     };
     let noto_loader = FontLoader::from_bytes_with_index(noto_bytes, noto_face_index)
-        .expect("Failed to parse NotoSansCJKsc-Regular.ttf");
+        .expect("Failed to parse NotoSansSC-Regular.ttf");
 
     let mut silver_cache = GlyphCache::new();
     let mut noto_cache = GlyphCache::new();
@@ -77,11 +78,19 @@ async fn run(debug: bool) {
     // Debug mode: print diagnostics and exit
     if debug {
         let silver_upem = silver_loader.units_per_em() as f32;
-        println!("=== SILVER FONT ===");
+        println!("=== SILVER FONT === (face_index={})", silver_face_index);
         debug_print(&silver_cache, &silver_items_ref, color, silver_upem);
-        println!("\n=== NOTO FONT ===");
+        debug_print_advances(&silver_loader, text, "Silver");
+        println!("\n=== NOTO FONT === (path={}, format={:?}, face_index={}, prefer_sc={}, is_collection={})",
+            noto_path.display(),
+            noto_format,
+            noto_face_index,
+            noto_prefer_sc,
+            noto_is_collection,
+        );
         let noto_upem = noto_loader.units_per_em() as f32;
         debug_print(&noto_cache, &noto_items_ref, color, noto_upem);
+        debug_print_advances(&noto_loader, text, "Noto");
         return;
     }
 

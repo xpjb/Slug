@@ -4,23 +4,40 @@ use rustybuzz::Face as RustyFace;
 use ttf_parser::{Face, OutlineBuilder};
 use crate::font::curves::{QuadraticCurve, GlyphOutlines};
 
+/// Sane advance for Latin 'l' in font units: 50-2000 (excludes LSB ~36 and garbage 65535).
+const SANE_LATIN_MIN: u16 = 50;
+const SANE_LATIN_MAX: u16 = 2000;
+
+/// Sane advance for CJK (e.g. 中): 500-3000 (rejects garbage 65535).
+const SANE_CJK_MIN: u16 = 500;
+const SANE_CJK_MAX: u16 = 3000;
+
+/// Sane advance for space (U+0020): 100-2000 (rejects garbage 65535).
+const SANE_SPACE_MIN: u16 = 100;
+const SANE_SPACE_MAX: u16 = 2000;
+
 /// Pick the best TTC/OTC face index by probing metrics. When hmtx table offsets are wrong
 /// (e.g. wrong face index), we read LSB instead of advance (e.g. 36) or garbage (65535).
-/// This probes each face and returns the index where Latin advance is sane (not LSB, not garbage).
+/// This probes each face and returns the index where Latin (and optionally CJK) advances are sane.
+///
+/// When `prefer_sc` is true (e.g. for NotoSansCJKsc), tries face index 2 first (SC in JP/KR/SC/TC OTC)
+/// and requires both Latin and CJK metrics to pass.
 pub fn pick_ttc_face_index(bytes: &[u8], num_faces: u32) -> u32 {
-    // Sane advance for 'l' in font units: 50-2000 (excludes LSB ~36 and garbage 65535)
-    const SANE_ADVANCE_MIN: u16 = 50;
-    const SANE_ADVANCE_MAX: u16 = 2000;
+    pick_ttc_face_index_with_options(bytes, num_faces, false)
+}
+
+/// Like [`pick_ttc_face_index`] but with optional SC preference for CJK collections.
+pub fn pick_ttc_face_index_with_options(bytes: &[u8], num_faces: u32, prefer_sc: bool) -> u32 {
+    // When prefer_sc, try face 2 (SC) first for Noto CJK OTC
+    if prefer_sc && num_faces >= 3 {
+        if face_passes_probe(bytes, 2, true) {
+            return 2;
+        }
+    }
 
     for i in 0..num_faces.min(4) {
-        if let Ok(face) = Face::parse(bytes, i) {
-            if let Some(gid) = face.glyph_index('l') {
-                if let Some(adv) = face.glyph_hor_advance(gid) {
-                    if (SANE_ADVANCE_MIN..=SANE_ADVANCE_MAX).contains(&adv) {
-                        return i;
-                    }
-                }
-            }
+        if face_passes_probe(bytes, i, prefer_sc) {
+            return i;
         }
     }
     // Heuristic fallback: SC often at index 2 in CJK OTC
@@ -29,6 +46,47 @@ pub fn pick_ttc_face_index(bytes: &[u8], num_faces: u32) -> u32 {
     } else {
         0
     }
+}
+
+/// Returns true if the face at index `i` has sane Latin (and when check_cjk, CJK) metrics.
+fn face_passes_probe(bytes: &[u8], i: u32, check_cjk: bool) -> bool {
+    let face = match Face::parse(bytes, i) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+
+    // Latin 'l' must have sane advance
+    let latin_ok = face
+        .glyph_index('l')
+        .and_then(|gid| face.glyph_hor_advance(gid))
+        .map(|adv| (SANE_LATIN_MIN..=SANE_LATIN_MAX).contains(&adv))
+        .unwrap_or(false);
+    if !latin_ok {
+        return false;
+    }
+
+    // When check_cjk, also verify CJK char 中 and space - space was returning 65535 on bad faces
+    if check_cjk {
+        let cjk_ok = face
+            .glyph_index('中')
+            .and_then(|gid| face.glyph_hor_advance(gid))
+            .map(|adv| (SANE_CJK_MIN..=SANE_CJK_MAX).contains(&adv))
+            .unwrap_or(false);
+        if !cjk_ok {
+            return false;
+        }
+        // Space (U+0020) must not return 65535 - catches hmtx OOB
+        let space_ok = face
+            .glyph_index(' ')
+            .and_then(|gid| face.glyph_hor_advance(gid))
+            .map(|adv| (SANE_SPACE_MIN..=SANE_SPACE_MAX).contains(&adv))
+            .unwrap_or(true); // no space glyph is ok
+        if !space_ok {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Loads TTF fonts and extracts glyph outlines as quadratic Bézier curves.

@@ -12,6 +12,6 @@ path = "src/lib.rs"
 [dependencies]
 wgpu = "0.20"
 ttf-parser = "0.25"
-rustybuzz = "0.20"
+rustybuzz = "0.20.1"
 bytemuck = { version = "1.16", features = ["derive"] }
 glam = "0.29"
